@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# \brief Ensures dependencies are present
+# \param $@ The dependencies to check for
+function dng2png_check_dependencies
+{
+	for TOOL in "$@"; do
+		if ! type "$TOOL" >/dev/null 2>/dev/null; then
+			echo "$CODENAME: \"$TOOL\" is required for this application to work correctly." >&2
+			exit
+		fi
+	done
+}
+
+# \brief Displays the help message and exits the program
+function dng2png_help
+{
+	printf "dng2png batch converts DNG files into PNG files\n\n"
+	printf "Usage:\n"
+	printf "  dng2png [-d|--delete] SOURCEDIR DESTINATIONDIR\n"
+}
+
+if [ $# -ne 2 -a $# -ne 3 ]; then
+	dng2png_help
+	exit;
+fi
+
+DELETE=false
+if [ ! -d "$1" -a "$1" = "-d" ]; then
+	DELETE=true
+	shift
+fi
+if [ ! -d "$1" -a "$1" = "--delete" ]; then
+	DELETE=true
+	shift
+fi
+
+dng2png_check_dependencies dcraw convert exiftool
+
+SOURCE="$1"
+DESTINATION="$2"
+mkdir -p "$2"
+
+for DNG in "$SOURCE"/*.[dD][nN][gG]; do
+	EXTENSION=$(echo -n "$DNG" | sed -r "s/.*\\.([^.]+)/\\1/")
+	BASENAME=$(basename "$DNG" .$EXTENSION)
+	echo "Converting \"$DNG\" to \"$DESTINATION/$BASENAME.png\"..."
+	dcraw -T -w -c "$DNG" >"$BASENAME.tiff" &&
+		convert "$BASENAME.tiff" "$BASENAME.png" &&
+		exiftool -overwrite_original -tagsFromFile "$SOURCE/$BASENAME.jpg" -tagsFromFile "$BASENAME.tiff" "$BASENAME.png" &&
+		mv "$BASENAME.png" "$DESTINATION/$BASENAME.png"
+	rm -f "$BASENAME.tiff"
+	if $DELETE; then
+		rm -fv "$DNG"
+		rm -fv "$SOURCE/$BASENAME".[jJ][pP][gG]
+	fi
+done
