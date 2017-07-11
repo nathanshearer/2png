@@ -1,8 +1,14 @@
 #!/bin/bash
 
+NAME="2png"
+CODENAME="twopng"
+COPYRIGHT="Copyright (C) 2017 Nathan Shearer"
+LICENSE="GNU General Public License 2.0"
+VERSION="0.0.0.0"
+
 # \brief Ensures dependencies are present
 # \param $@ The dependencies to check for
-function dng2png_check_dependencies
+function twopng_check_dependencies
 {
 	for TOOL in "$@"; do
 		if ! type "$TOOL" >/dev/null 2>/dev/null; then
@@ -12,46 +18,124 @@ function dng2png_check_dependencies
 	done
 }
 
-# \brief Displays the help message and exits the program
-function dng2png_help
+# Convert $1 into a png file
+# \param $1 The input file to convert
+# \param $2 The output file name
+function twopng_convert
 {
-	printf "dng2png batch converts DNG files into PNG files\n\n"
-	printf "Usage:\n"
-	printf "  dng2png [-d|--delete] SOURCEDIR DESTINATIONDIR\n"
+	echo "‘$1’ -> ‘$2’"
+	local TMPUUID=$RANDOM
+	dcraw -w -c "$1" > "/tmp/$CODENAME.$$.$TMPUUID.ppm"
+	convert "/tmp/$CODENAME.$$.$TMPUUID.ppm" "/tmp/$CODENAME.$$.$TMPUUID.png"
+	if type pngcrush >/dev/null 2>/dev/null; then
+		pngcrush -brute -warn "/tmp/$CODENAME.$$.$TMPUUID.png" "/tmp/$CODENAME.$$.$TMPUUID.crushed.png"
+		mv -f "/tmp/$CODENAME.$$.$TMPUUID.crushed.png" "/tmp/$CODENAME.$$.$TMPUUID.png"
+	fi
+	exiftool -q -overwrite_original -tagsFromFile "$1" "/tmp/$CODENAME.$$.$TMPUUID.png"
+	local FILENAME=$(echo -n "$1" | sed -r "s/(.*)\\.[^.]+/\\1/")
+	if [ -f "$FILENAME.jpg" ]; then
+		exiftool -q -overwrite_original -tagsFromFile "$FILENAME.jpg" "/tmp/$CODENAME.$$.$TMPUUID.png"
+	fi
+	mv "/tmp/$CODENAME.$$.$TMPUUID.png" "$2"
+	rm -f "/tmp/$CODENAME.$$.$TMPUUID"*
+	if [ -e "$2" ] && $DELETE; then
+		rm -f "$1"
+		rm -f "$FILENAME".[jJ][pP][gG]
+	fi
 }
 
-if [ $# -ne 2 -a $# -ne 3 ]; then
-	dng2png_help
-	exit;
+# \brief Displays the help and exits the program
+function toopng_help
+{
+	#     01234567890123456789012345678901234567890123456789012345678901234567890123456789
+	echo "Description:"
+	echo "  Convert files to PNG files."
+	echo
+	echo "Usage:"
+	echo "  $CODENAME [options]"
+	echo
+	echo "Options:"
+	echo "  -d, --delete"
+	echo "    Delete the source file (and it's accompanying jpg file if one is present)."
+	echo "    This option is disabled by default."
+	echo "  -h, --help"
+	echo "    Display this help message and exit."
+	echo
+	echo "Examples:"
+	echo "  $CODENAME -d foo.dng bar.dng"
+	echo
+	echo "Version:"
+	echo "  $NAME $VERSION"
+	echo "  $COPYRIGHT"
+	echo "  Licensed under $LICENSE"
+	exit
+}
+
+function twopng_main
+{
+	local FILE_EXTENSION=""
+	local FILE_NAME=""
+
+	while [ $# -ne 0 ]; do
+		unset PROCESSES
+		for THREAD in $(seq 1 $THREADS); do
+			if [ $# -eq 0 ]; then break; fi
+			if [ ! -f "$1" ]; then
+				echo "File does not exist: \"$1\""
+				return 1
+			fi
+			FILE_EXTENSION=$(echo -n "$1" | sed -r "s/.*\\.([^.]+)/\\1/")
+			if [ "$FILE_EXTENSION" != "png" ]; then
+				FILE_NAME=$(echo -n "$1" | sed -r "s/(.*)\\.[^.]+/\\1/")
+				twopng_convert "$1" "$FILE_NAME.png" &
+			fi
+			PROCESSES[${#PROCESSES[@]}]=$!
+			shift
+		done
+		wait "${PROCESSES[@]}"
+	done
+}
+
+#------------------------------------------------------------------------------
+# default configuration
+#
+
+THREADS=$(grep -c processor /proc/cpuinfo)
+
+#------------------------------------------------------------------------------
+# command line arguments
+#
+
+if [ $# -eq 0 ]; then
+	toopng_help
+	exit 1
+fi
+
+if [ ! -f "$1" -a "$1" = "-h" ]; then
+	toopng_help
+	exit 1
+fi
+if [ ! -f "$1" -a "$1" = "--help" ]; then
+	toopng_help
+	exit 1
 fi
 
 DELETE=false
-if [ ! -d "$1" -a "$1" = "-d" ]; then
+if [ ! -f "$1" -a "$1" = "-d" ]; then
 	DELETE=true
 	shift
 fi
-if [ ! -d "$1" -a "$1" = "--delete" ]; then
+if [ ! -f "$1" -a "$1" = "--delete" ]; then
 	DELETE=true
 	shift
 fi
 
-dng2png_check_dependencies dcraw convert exiftool
+#------------------------------------------------------------------------------
+# prepare environment
 
-SOURCE="$1"
-DESTINATION="$2"
-mkdir -p "$2"
+twopng_check_dependencies dcraw convert exiftool
 
-for DNG in "$SOURCE"/*.[dD][nN][gG]; do
-	EXTENSION=$(echo -n "$DNG" | sed -r "s/.*\\.([^.]+)/\\1/")
-	BASENAME=$(basename "$DNG" .$EXTENSION)
-	echo "Converting \"$DNG\" to \"$DESTINATION/$BASENAME.png\"..."
-	dcraw -T -w -c "$DNG" >"$BASENAME.tiff" &&
-		convert "$BASENAME.tiff" "$BASENAME.png" &&
-		exiftool -overwrite_original -tagsFromFile "$SOURCE/$BASENAME.jpg" -tagsFromFile "$BASENAME.tiff" "$BASENAME.png" &&
-		mv "$BASENAME.png" "$DESTINATION/$BASENAME.png"
-	rm -f "$BASENAME.tiff"
-	if $DELETE; then
-		rm -fv "$DNG"
-		rm -fv "$SOURCE/$BASENAME".[jJ][pP][gG]
-	fi
-done
+#------------------------------------------------------------------------------
+# begin execution
+
+twopng_main "$@"
