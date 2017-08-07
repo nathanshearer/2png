@@ -4,7 +4,7 @@ NAME="2png"
 CODENAME="twopng"
 COPYRIGHT="Copyright (C) 2017 Nathan Shearer"
 LICENSE="GNU General Public License 2.0"
-VERSION="0.0.0.0"
+VERSION="1.0.0.0"
 
 # \brief Ensures dependencies are present
 # \param $@ The dependencies to check for
@@ -36,7 +36,7 @@ function twopng_convert
 	if [ -f "$FILENAME.jpg" ]; then
 		exiftool -q -overwrite_original -tagsFromFile "$FILENAME.jpg" "/tmp/$CODENAME.$$.$TMPUUID.png"
 	fi
-	mv "/tmp/$CODENAME.$$.$TMPUUID.png" "$2"
+	mv $MV_ARGS "/tmp/$CODENAME.$$.$TMPUUID.png" "$2"
 	rm -f "/tmp/$CODENAME.$$.$TMPUUID"*
 	if [ -e "$2" ] && $DELETE; then
 		rm -f "$1"
@@ -52,12 +52,20 @@ function toopng_help
 	echo "  Convert files to PNG files."
 	echo
 	echo "Usage:"
-	echo "  $CODENAME [options]"
+	echo "  $CODENAME [options] file..."
 	echo
 	echo "Options:"
 	echo "  -d, --delete"
 	echo "    Delete the source file (and it's accompanying jpg file if one is present)."
 	echo "    This option is disabled by default."
+	echo "  -f, --force"
+	echo "    Overwrite existing files. Disabled by default."
+	echo "    If more than one of -f and -n are specified then only the final one takes"
+	echo "    effect."
+	echo "  -n, --no-clobber"
+	echo "    Do not overwrite files. Enabled by default."
+	echo "    If more than one of -f and -n are specified then only the final one takes"
+	echo "    effect."
 	echo "  -h, --help"
 	echo "    Display this help message and exit."
 	echo
@@ -100,6 +108,7 @@ function twopng_main
 # default configuration
 #
 
+MV_ARGS="-n"
 THREADS=$(grep -c processor /proc/cpuinfo)
 
 #------------------------------------------------------------------------------
@@ -127,6 +136,24 @@ if [ ! -f "$1" -a "$1" = "-d" ]; then
 fi
 if [ ! -f "$1" -a "$1" = "--delete" ]; then
 	DELETE=true
+	shift
+fi
+
+if [ ! -f "$1" -a "$1" = "-f" ]; then
+	MV_ARGS="$MV_ARGS -f"
+	shift
+fi
+if [ ! -f "$1" -a "$1" = "--force" ]; then
+	MV_ARGS="$MV_ARGS -f"
+	shift
+fi
+
+if [ ! -f "$1" -a "$1" = "-n" ]; then
+	MV_ARGS="$MV_ARGS -n"
+	shift
+fi
+if [ ! -f "$1" -a "$1" = "--no-clobber" ]; then
+	MV_ARGS="$MV_ARGS -n"
 	shift
 fi
 
